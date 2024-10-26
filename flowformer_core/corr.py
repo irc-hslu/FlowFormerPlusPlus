@@ -1,10 +1,15 @@
 import torch
 import torch.nn.functional as F
+from torch.utils.cpp_extension import load
 
 from utils.utils import bilinear_sampler
 
 try:
-    import alt_cuda_corr
+    alt_cuda_corr = load(
+        name="correlation",
+        sources=['correlation.cpp', 'correlation_kernel.cu'],
+        verbose=True,
+    )
 except:
     # alt_cuda_corr is not compiled
     pass

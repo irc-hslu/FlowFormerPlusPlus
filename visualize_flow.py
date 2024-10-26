@@ -1,28 +1,18 @@
-import sys
-sys.path.append('core')
-
-from PIL import Image
-from glob import glob
 import argparse
+import math
 import os
-import time
+import os.path as osp
+from glob import glob
+
+import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
-from configs.submissions import get_cfg
-from flowformer_core.utils.misc import process_cfg
-import datasets
-from utils import flow_viz
-from utils import frame_utils
-import cv2
-import math
-import os.path as osp
 
+from flowformer_configs.submissions import get_cfg
 from flowformer_core.FlowFormer import build_flowformer
-
-from utils.utils import InputPadder, forward_interpolate
-import itertools
+from flowformer_core.utils import flow_viz, frame_utils
+from flowformer_core.utils.utils import InputPadder
 
 TRAIN_SIZE = [432, 960]
 
