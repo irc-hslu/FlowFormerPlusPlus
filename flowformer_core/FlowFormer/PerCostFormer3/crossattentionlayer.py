@@ -1,8 +1,8 @@
 import torch
-import math
 import torch.nn as nn
-import torch.nn.functional as F
-from .attention import BroadMultiHeadAttention
+
+from flowformer_core.FlowFormer.PerCostFormer3.attention import BroadMultiHeadAttention
+
 
 class CrossAttentionLayer(nn.Module):
     def __init__(self, qk_dim, v_dim, query_token_dim, tgt_token_dim, num_heads=8, attn_drop=0., proj_drop=0., drop_path=0., dropout=0.):
@@ -38,7 +38,7 @@ class CrossAttentionLayer(nn.Module):
         """
             x: [BH1W1, H3W3, D]
         """
-        
+
         if ids_keep is not None:
             tgt_token = torch.gather(tgt_token, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, tgt_token.shape[-1]))
 
@@ -54,6 +54,7 @@ class CrossAttentionLayer(nn.Module):
         x = x + self.drop_path(self.ffn(self.norm2(x)))
 
         return x
+
 
 class CrossAttentionLayer_two_level(nn.Module):
     def __init__(self, qk_dim, v_dim, query_token_dim, tgt_token_dim, num_heads=8, attn_drop=0., proj_drop=0., drop_path=0., dropout=0.):
@@ -87,10 +88,9 @@ class CrossAttentionLayer_two_level(nn.Module):
 
     def compute_indices(self, size):
         H, W = size
-        hs = [(0, int(H/2)), (int(H/2), H)]
-        ws = [(0, int(W/3)), (int(W/3), int(W/3)*2), (int(W/3)*2, W)]
+        hs = [(0, int(H / 2)), (int(H / 2), H)]
+        ws = [(0, int(W / 3)), (int(W / 3), int(W / 3) * 2), (int(W / 3) * 2, W)]
         return [(*h, *w) for h in hs for w in ws]
-
 
     def forward(self, query, tgt_token, size):
         """
@@ -113,7 +113,7 @@ class CrossAttentionLayer_two_level(nn.Module):
         indices = self.compute_indices(size)
         for idx, corners in enumerate(indices):
             h0, h1, w0, w1 = corners
-            res.append(self.multi_head_attn(q[:, 2+idx:3+idx, :], k[:, h0:h1, w0:w1, :].reshape(B, -1, C), v[:, h0:h1, w0:w1, :].reshape(B, -1, C)))
+            res.append(self.multi_head_attn(q[:, 2 + idx:3 + idx, :], k[:, h0:h1, w0:w1, :].reshape(B, -1, C), v[:, h0:h1, w0:w1, :].reshape(B, -1, C)))
 
         x = torch.cat(res, dim=1)
 
@@ -122,6 +122,7 @@ class CrossAttentionLayer_two_level(nn.Module):
         x = x + self.drop_path(self.ffn(self.norm2(x)))
 
         return x
+
 
 class CrossAttentionLayer_convk3s2(nn.Module):
     def __init__(self, qk_dim, v_dim, query_token_dim, tgt_token_dim, num_heads=8, attn_drop=0., proj_drop=0., drop_path=0., dropout=0.):
@@ -169,14 +170,14 @@ class CrossAttentionLayer_convk3s2(nn.Module):
 
     def compute_indices_fine(self, size):
         H, W = size
-        hs = [(0, int(H/2)), (int(H/2), H)]
-        ws = [(0, int(W/3)), (int(W/3), int(W/3)*2), (int(W/3)*2, W)]
+        hs = [(0, int(H / 2)), (int(H / 2), H)]
+        ws = [(0, int(W / 3)), (int(W / 3), int(W / 3) * 2), (int(W / 3) * 2, W)]
         return [(*h, *w) for h in hs for w in ws]
-    
+
     def compute_indices_coarse(self, size):
         H, W = size
-        hs = [(0, int(H/2)), (int(H/2), H)]
-        ws = [(0, int(W/2)), (int(W/2), W)]
+        hs = [(0, int(H / 2)), (int(H / 2), H)]
+        ws = [(0, int(W / 2)), (int(W / 2), W)]
         return [(*h, *w) for h in hs for w in ws]
 
     def forward(self, query, tgt_token, size):
@@ -202,7 +203,7 @@ class CrossAttentionLayer_convk3s2(nn.Module):
         indices = self.compute_indices_fine(size)
         for idx, corners in enumerate(indices):
             h0, h1, w0, w1 = corners
-            res_fine.append(self.multi_head_attn(q[:, idx:idx+1, :], k[:, h0:h1, w0:w1, :].reshape(B, -1, C), v[:, h0:h1, w0:w1, :].reshape(B, -1, C)))
+            res_fine.append(self.multi_head_attn(q[:, idx:idx + 1, :], k[:, h0:h1, w0:w1, :].reshape(B, -1, C), v[:, h0:h1, w0:w1, :].reshape(B, -1, C)))
 
         x = torch.cat(res_fine, dim=1)
 
@@ -222,7 +223,7 @@ class CrossAttentionLayer_convk3s2(nn.Module):
         indices = self.compute_indices_coarse((H, W))
         for idx, corners in enumerate(indices):
             h0, h1, w0, w1 = corners
-            res_coarse.append(self.multi_head_attn(q[:, idx:idx+1, :], k[:, h0:h1, w0:w1, :].reshape(B, -1, C), v[:, h0:h1, w0:w1, :].reshape(B, -1, C)))
+            res_coarse.append(self.multi_head_attn(q[:, idx:idx + 1, :], k[:, h0:h1, w0:w1, :].reshape(B, -1, C), v[:, h0:h1, w0:w1, :].reshape(B, -1, C)))
 
         x = torch.cat(res_coarse, dim=1)
 
@@ -231,8 +232,9 @@ class CrossAttentionLayer_convk3s2(nn.Module):
         x_coarse = x + self.drop_path(self.ffn_coarse(self.norm2_coarse(x)))
 
         x = torch.cat([x_fine, x_coarse], dim=1)
-        
+
         return x
+
 
 class CrossAttentionLayer_two_level_rep(nn.Module):
     def __init__(self, qk_dim, v_dim, query_token_dim, tgt_token_dim, num_heads=8, attn_drop=0., proj_drop=0., drop_path=0., dropout=0.):
@@ -266,10 +268,9 @@ class CrossAttentionLayer_two_level_rep(nn.Module):
 
     def compute_indices(self, size):
         H, W = size
-        hs = [(0, int(H/2)), (int(H/2), H)]
-        ws = [(0, int(W/3)), (int(W/3), int(W/3)*2), (int(W/3)*2, W)]
+        hs = [(0, int(H / 2)), (int(H / 2), H)]
+        ws = [(0, int(W / 3)), (int(W / 3), int(W / 3) * 2), (int(W / 3) * 2, W)]
         return [(*h, *w) for h in hs for w in ws]
-
 
     def forward(self, query, tgt_token, size):
         """
@@ -284,7 +285,7 @@ class CrossAttentionLayer_two_level_rep(nn.Module):
         H, W = size
 
         res = []
-        
+
         k = k.reshape(B, H, W, C)
         v = v.reshape(B, H, W, C)
 
@@ -297,7 +298,7 @@ class CrossAttentionLayer_two_level_rep(nn.Module):
 
         for idx, corners in enumerate(indices):
             h0, h1, w0, w1 = corners
-            res.append(self.multi_head_attn(q[:, 2+idx:3+idx, :], k[:, h0:h1, w0:w1, :].reshape(B, -1, C), v[:, h0:h1, w0:w1, :].reshape(B, -1, C)))
+            res.append(self.multi_head_attn(q[:, 2 + idx:3 + idx, :], k[:, h0:h1, w0:w1, :].reshape(B, -1, C), v[:, h0:h1, w0:w1, :].reshape(B, -1, C)))
 
         x = torch.cat(res, dim=1)
 
@@ -306,6 +307,7 @@ class CrossAttentionLayer_two_level_rep(nn.Module):
         x = x + self.drop_path(self.ffn(self.norm2(x)))
 
         return x
+
 
 class CrossAttentionLayer_34(nn.Module):
     def __init__(self, qk_dim, v_dim, query_token_dim, tgt_token_dim, num_heads=8, attn_drop=0., proj_drop=0., drop_path=0., dropout=0.):
@@ -339,10 +341,9 @@ class CrossAttentionLayer_34(nn.Module):
 
     def compute_indices(self, size):
         H, W = size
-        hs = [(0, int(H/3)), (int(H/3), int(H/3)*2), (int(H/3)*2, H)]
-        ws = [(0, int(W/4)), (int(W/4), int(W/4)*2), (int(W/4)*2, int(W/4)*3), (int(W/4)*3, W)]
+        hs = [(0, int(H / 3)), (int(H / 3), int(H / 3) * 2), (int(H / 3) * 2, H)]
+        ws = [(0, int(W / 4)), (int(W / 4), int(W / 4) * 2), (int(W / 4) * 2, int(W / 4) * 3), (int(W / 4) * 3, W)]
         return [(*h, *w) for h in hs for w in ws]
-
 
     def forward(self, query, tgt_token, size):
         """
@@ -364,7 +365,7 @@ class CrossAttentionLayer_34(nn.Module):
         indices = self.compute_indices(size)
         for idx, corners in enumerate(indices):
             h0, h1, w0, w1 = corners
-            res.append(self.multi_head_attn(q[:, idx:idx+1, :], k[:, h0:h1, w0:w1, :].reshape(B, -1, C), v[:, h0:h1, w0:w1, :].reshape(B, -1, C)))
+            res.append(self.multi_head_attn(q[:, idx:idx + 1, :], k[:, h0:h1, w0:w1, :].reshape(B, -1, C), v[:, h0:h1, w0:w1, :].reshape(B, -1, C)))
 
         x = torch.cat(res, dim=1)
 

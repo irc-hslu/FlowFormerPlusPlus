@@ -1,5 +1,6 @@
 import torch
-from torch.optim.lr_scheduler import MultiStepLR, CosineAnnealingLR, ExponentialLR, OneCycleLR
+from torch.optim.lr_scheduler import OneCycleLR
+
 
 def fetch_optimizer(model, cfg):
     """ Create the optimizer and learning rate scheduler """
@@ -11,6 +12,7 @@ def fetch_optimizer(model, cfg):
     scheduler = build_scheduler(cfg, optimizer)
 
     return optimizer, scheduler
+
 
 def build_optimizer(model, config):
     name = config.optimizer
@@ -26,7 +28,7 @@ def build_optimizer(model, config):
                 {"params": [p for n, p in model.named_parameters() if "feat_encoder" not in n and 'context_encoder' not in n and p.requires_grad]},
                 {
                     "params": [p for n, p in model.named_parameters() if ("feat_encoder" in n or 'context_encoder' in n) and p.requires_grad],
-                    "lr": lr*factor,
+                    "lr": lr * factor,
                 },
             ]
             full = [n for n, _ in model.named_parameters()]
@@ -53,15 +55,15 @@ def build_scheduler(config, optimizer):
         # scheduler = OneCycleLR(optimizer, )
         if hasattr(config, 'twins_lr_factor'):
             factor = config.twins_lr_factor
-            scheduler = OneCycleLR(optimizer, [lr, lr*factor], config.num_steps+100,
-                pct_start=0.05, cycle_momentum=False, anneal_strategy=config.anneal_strategy)
+            scheduler = OneCycleLR(optimizer, [lr, lr * factor], config.num_steps + 100,
+                                   pct_start=0.05, cycle_momentum=False, anneal_strategy=config.anneal_strategy)
         else:
-            scheduler = OneCycleLR(optimizer, lr, config.num_steps+100,
-                pct_start=0.05, cycle_momentum=False, anneal_strategy=config.anneal_strategy)
+            scheduler = OneCycleLR(optimizer, lr, config.num_steps + 100,
+                                   pct_start=0.05, cycle_momentum=False, anneal_strategy=config.anneal_strategy)
     # elif name == 'MultiStepLR':
     #     scheduler.update(
     #         {'scheduler': MultiStepLR(optimizer, config.TRAINER.MSLR_MILESTONES, gamma=config.TRAINER.MSLR_GAMMA)})
-    #elif name == 'CosineAnnealing':
+    # elif name == 'CosineAnnealing':
     #    scheduler = CosineAnnealingLR(optimizer, config.num_steps+100)
     #     scheduler.update(
     #         {'scheduler': CosineAnnealingLR(optimizer, config.TRAINER.COSA_TMAX)})

@@ -1,14 +1,14 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
-
 MAX_FLOW = 400
+
 
 def coords_grid(batch, ht, wd):
     coords = torch.meshgrid(torch.arange(ht), torch.arange(wd))
     coords = torch.stack(coords[::-1], dim=0).float()
     return coords[None].repeat(batch, 1, 1, 1)
+
 
 def flow_to_warp(flow):
     """
@@ -27,16 +27,18 @@ def flow_to_warp(flow):
     warp = grid + flow
     return warp
 
+
 def warp(x, flo, mode='bilinear'):
     H, W = flo.shape[-2:]
     vgrid = flow_to_warp(flo)
-    vgrid[:, :, :, 0] = 2.0 * vgrid[:, :, :, 0] / max(W-1, 1) - 1.0
-    vgrid[:, :, :, 1] = 2.0 * vgrid[:, :, :, 1] / max(H-1, 1) - 1.0
+    vgrid[:, :, :, 0] = 2.0 * vgrid[:, :, :, 0] / max(W - 1, 1) - 1.0
+    vgrid[:, :, :, 1] = 2.0 * vgrid[:, :, :, 1] / max(H - 1, 1) - 1.0
     if mode == 'bilinear':
         output = F.grid_sample(x, vgrid, mode=mode, align_corners=True)
     else:
         output = F.grid_sample(x, vgrid, mode=mode)
     return output
+
 
 def mask_invalid(coords, pad_h=0, pad_w=0):
     """
@@ -61,9 +63,9 @@ def mask_invalid(coords, pad_h=0, pad_w=0):
     max_width = float(coords.shape[-2] - 1)
     mask = torch.logical_and(
         torch.logical_and(coords[:, :, :, 0] >= pad_w,
-                        coords[:, :, :, 0] <= max_width),
+                          coords[:, :, :, 0] <= max_width),
         torch.logical_and(coords[:, :, :, 1] >= pad_h,
-                        coords[:, :, :, 1] <= max_height))
+                          coords[:, :, :, 1] <= max_height))
     mask = mask.float()[:, None, :, :]
     return mask
 
@@ -113,8 +115,8 @@ def compute_range_map(flow):
             valid_offsets = coords_offset_flattened[mask]
 
             # Compute weights according to bilinear interpolation
-            weights_i = (1. - di) - (-1)**di * valid_offsets[:, 0]
-            weights_j = (1. - dj) - (-1)**dj * valid_offsets[:, 1]
+            weights_i = (1. - di) - (-1) ** di * valid_offsets[:, 0]
+            weights_j = (1. - dj) - (-1) ** dj * valid_offsets[:, 1]
             weights = weights_i * weights_j
 
             # Append indices and weights
@@ -131,11 +133,12 @@ def compute_range_map(flow):
     range_map = counts.reshape(batch_size, 1, input_height, input_width)
     return range_map
 
+
 def compute_fb_consistency(flow_ij, flow_ji):
     # Compare forward and backward flow
     flow_ji_in_i = warp(flow_ji, flow_ij)
-    fb_sq_diff = torch.sum((flow_ij + flow_ji_in_i)**2, dim=1, keepdim=True)
-    fb_sum_sq = torch.sum((flow_ij**2 + flow_ji_in_i**2), dim=1, keepdim=True)
+    fb_sq_diff = torch.sum((flow_ij + flow_ji_in_i) ** 2, dim=1, keepdim=True)
+    fb_sum_sq = torch.sum((flow_ij ** 2 + flow_ji_in_i ** 2), dim=1, keepdim=True)
 
     return fb_sq_diff, fb_sum_sq
 
@@ -158,18 +161,18 @@ def compute_occlusion(flow_ij, flow_ji, occlusion_estimation, occlusion_are_zero
     fb_sq_diff, fb_sum_sq = compute_fb_consistency(flow_ij, flow_ji)
 
     occlusion_mask = torch.zeros_like(flow_ij[:, :1, :, :])
-    
+
     if occlusion_estimation == 'none':
         B, _, H, W = flow_ij.shape
         occlusion_mask = torch.zeros(B, 1, H, W, dtype=flow_ij.dtype, device=flow_ij.device)
     elif occlusion_estimation == 'brox':
         occlusion_mask = (fb_sq_diff > 0.01 * fb_sum_sq + 0.5).float()
     elif occlusion_estimation == 'fb_abs':
-        occlusion_mask = (fb_sq_diff**0.5 > 1.5).float()
+        occlusion_mask = (fb_sq_diff ** 0.5 > 1.5).float()
     elif occlusion_estimation == 'wang':
         range_map = compute_range_map(flow_ji)
         occlusion_mask = 1 - torch.clamp(range_map, min=0.0, max=1.0)
-    
+
     if not boundaries_occluded:
         warp = flow_to_warp(flow_ij)
         occlusion_mask = torch.min(occlusion_mask, mask_invalid(warp))
@@ -178,8 +181,10 @@ def compute_occlusion(flow_ij, flow_ji, occlusion_estimation, occlusion_are_zero
         occlusion_mask = 1 - occlusion_mask
     return occlusion_mask
 
+
 def photo_loss_fn(image1, warped_image, mask_level0):
     return (image1 - warped_image).abs() * mask_level0
+
 
 def cal_unsup_loss(image1, image2, flow_forward, flow_backward, gamma):
     max_flow = MAX_FLOW
@@ -194,8 +199,8 @@ def cal_unsup_loss(image1, image2, flow_forward, flow_backward, gamma):
             mask_level0 = occlusion_mask * valid_warp_mask
         warped_image = warp(image2, flow_forward[i])
         photo_loss = photo_loss_fn(image1, warped_image, mask_level0)
-        
-        i_weight = gamma**(n_predictions - i - 1)
+
+        i_weight = gamma ** (n_predictions - i - 1)
         flow_loss += i_weight * photo_loss.mean()
     return flow_loss
 
@@ -205,20 +210,20 @@ def sequence_loss(flow_preds, flow_gt, valid, cfg):
 
     gamma = cfg.gamma
     max_flow = cfg.max_flow
-    n_predictions = len(flow_preds)    
+    n_predictions = len(flow_preds)
     flow_loss = 0.0
     flow_gt_thresholds = [5, 10, 20]
 
     # exlude invalid pixels and extremely large diplacements
-    mag = torch.sum(flow_gt**2, dim=1).sqrt()
+    mag = torch.sum(flow_gt ** 2, dim=1).sqrt()
     valid = (valid >= 0.5) & (mag < max_flow)
 
     for i in range(n_predictions):
-        i_weight = gamma**(n_predictions - i - 1)
+        i_weight = gamma ** (n_predictions - i - 1)
         i_loss = (flow_preds[i] - flow_gt).abs()
         flow_loss += i_weight * (valid[:, None] * i_loss).mean()
 
-    epe = torch.sum((flow_preds[-1] - flow_gt)**2, dim=1).sqrt()
+    epe = torch.sum((flow_preds[-1] - flow_gt) ** 2, dim=1).sqrt()
     epe = epe.view(-1)[valid.view(-1)]
 
     metrics = {
@@ -228,14 +233,12 @@ def sequence_loss(flow_preds, flow_gt, valid, cfg):
         '5px': (epe < 5).float().mean().item(),
     }
 
-    flow_gt_length = torch.sum(flow_gt**2, dim=1).sqrt()
+    flow_gt_length = torch.sum(flow_gt ** 2, dim=1).sqrt()
     flow_gt_length = flow_gt_length.view(-1)[valid.view(-1)]
     for t in flow_gt_thresholds:
         e = epe[flow_gt_length < t]
         metrics.update({
-                f"{t}-th-5px": (e < 5).float().mean().item()
+            f"{t}-th-5px": (e < 5).float().mean().item()
         })
 
-
     return flow_loss, metrics
-

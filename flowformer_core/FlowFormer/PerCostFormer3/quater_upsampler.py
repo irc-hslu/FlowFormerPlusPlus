@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 
-from ...utils.utils import coords_grid
+from flowformer_core.utils.utils import coords_grid
 
 def initialize_flow(img):
     """ Flow is represented as difference between two means flow = mean1 - mean0"""

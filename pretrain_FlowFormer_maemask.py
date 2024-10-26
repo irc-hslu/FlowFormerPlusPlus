@@ -18,15 +18,15 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from core import optimizer
 import core.pretrain_maemask_datasets as datasets
-from core.optimizer import fetch_optimizer
-from core.utils.misc import process_cfg
+from flowformer_core.optimizer import fetch_optimizer
+from flowformer_core.utils.misc import process_cfg
 from loguru import logger as loguru_logger
 
 # from torch.utils.tensorboard import SummaryWriter
-from core.utils.logger import Logger
+from flowformer_core.utils.logger import Logger
 
 # from core.FlowFormer import FlowFormer
-from core.FlowFormer import build_flowformer
+from flowformer_core.FlowFormer import build_flowformer
 
 try:
     from torch.cuda.amp import GradScaler

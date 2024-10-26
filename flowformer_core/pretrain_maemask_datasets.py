@@ -1,20 +1,18 @@
 # Data loading based on https://github.com/NVIDIA/flownet2-pytorch
 
+import os
+import os.path as osp
+import random
+from glob import glob
+
 import numpy as np
 import torch
 import torch.utils.data as data
-import torch.nn.functional as F
-
-import os
-import math
-import random
-from glob import glob
-import os.path as osp
+from loguru import logger as loguru_logger
 
 from utils import frame_utils
 from utils.augmentor import ImageAugmentor
 
-from loguru import logger as loguru_logger
 
 class FlowDataset(data.Dataset):
     def __init__(self, aug_params=None, sparse=False):
@@ -47,10 +45,9 @@ class FlowDataset(data.Dataset):
                 random.seed(worker_info.id)
                 self.init_seed = True
         _index = index
-    
+
         while True:
             index = index % len(self.image_list)
-            #print(index, "~~~~~~~~~~~~~")
             try:
                 img1 = frame_utils.read_gen(self.image_list[index][0])
                 img2 = frame_utils.read_gen(self.image_list[index][1])
@@ -60,7 +57,7 @@ class FlowDataset(data.Dataset):
                 continue
             img1 = np.array(img1).astype(np.uint8)
             img2 = np.array(img2).astype(np.uint8)
-            
+
             H, W, _ = img1.shape
             H2, W2, _ = img2.shape
             if H != H2 or W != W2:
@@ -74,8 +71,8 @@ class FlowDataset(data.Dataset):
 
         # grayscale images
         if len(img1.shape) == 2:
-            img1 = np.tile(img1[...,None], (1, 1, 3))
-            img2 = np.tile(img2[...,None], (1, 1, 3))
+            img1 = np.tile(img1[..., None], (1, 1, 3))
+            img2 = np.tile(img2[..., None], (1, 1, 3))
         else:
             img1 = img1[..., :3]
             img2 = img2[..., :3]
@@ -94,14 +91,13 @@ class FlowDataset(data.Dataset):
 
         return img1, img2, mask
 
-
     def __rmul__(self, v):
         self.image_list = v * self.image_list
         return self
-        
+
     def __len__(self):
         return len(self.image_list)
-        
+
 
 class YoutubeVOS(FlowDataset):
     def __init__(self, aug_params=None, root='/mnt/lustre/share_data/shixiaoyu/youtubevos/'):
@@ -111,25 +107,25 @@ class YoutubeVOS(FlowDataset):
 
         for split in splits:
             dir_root = osp.join(root, split)
-            
+
             for dir in os.listdir(dir_root):
                 image_list = sorted(glob(osp.join(dir_root, dir, '*.jpg')))
 
-                for i in range(9, len(image_list)-1, 3):
-                    self.image_list += [[image_list[i-9], image_list[i]]]
-                    self.image_list += [[image_list[i], image_list[i-9]]]
+                for i in range(9, len(image_list) - 1, 3):
+                    self.image_list += [[image_list[i - 9], image_list[i]]]
+                    self.image_list += [[image_list[i], image_list[i - 9]]]
         print(self.image_list[:4])
-       
+
 
 def fetch_dataloader(args, TRAIN_DS='C+T+K+S+H'):
     """ Create the data loader for the corresponding trainign set """
-    
+
     if args.stage == 'youtube':
         aug_params = {'crop_size': args.image_size, 'min_scale': -0.2, 'max_scale': 0.6, 'do_flip': True}
         train_dataset = YoutubeVOS(aug_params)
-    
-    train_loader = data.DataLoader(train_dataset, batch_size=args.batch_size, 
-        pin_memory=False, shuffle=True, num_workers=24, drop_last=True)
+
+    train_loader = data.DataLoader(train_dataset, batch_size=args.batch_size,
+                                   pin_memory=False, shuffle=True, num_workers=24, drop_last=True)
 
     print('Training with %d image pairs' % len(train_dataset))
     return train_loader

@@ -12,22 +12,20 @@ Code/weights from https://github.com/Meituan-AutoML/Twins, original copyright/li
 # Written by Xinjie Li, Xiangxiang Chu
 # --------------------------------------------------------
 import math
-from multiprocessing.sharedctypes import Value
-import numpy as np
-from copy import deepcopy
-from typing import Optional, Tuple
+from functools import partial
+from typing import Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from functools import partial
-
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-from timm.models.layers import Mlp, DropPath, to_2tuple, trunc_normal_
 from timm.models.fx_features import register_notrace_module
+from timm.models.helpers import build_model_with_cfg
+from timm.models.layers import Mlp, DropPath, to_2tuple, trunc_normal_
 from timm.models.registry import register_model
 from timm.models.vision_transformer import Attention
-from timm.models.helpers import build_model_with_cfg
+
 
 def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, cossin=False):
     """
@@ -54,7 +52,7 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid, cossin=False):
     emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0], cossin=cossin)  # (H*W, D/2)
     emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1], cossin=cossin)  # (H*W, D/2)
 
-    emb = np.concatenate([emb_h, emb_w], axis=1) # (H*W, D)
+    emb = np.concatenate([emb_h, emb_w], axis=1)  # (H*W, D)
     return emb
 
 
@@ -67,13 +65,13 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, cossin=False):
     assert embed_dim % 2 == 0
     omega = np.arange(embed_dim // 2, dtype=np.float)
     omega /= embed_dim / 2.
-    omega = 1. / 10000**omega  # (D/2,)
+    omega = 1. / 10000 ** omega  # (D/2,)
 
     pos = pos.reshape(-1)  # (M,)
     out = np.einsum('m,d->md', pos, omega)  # (M, D/2), outer product
 
-    emb_sin = np.sin(out) # (M, D/2)
-    emb_cos = np.cos(out) # (M, D/2)
+    emb_sin = np.sin(out)  # (M, D/2)
+    emb_cos = np.cos(out)  # (M, D/2)
 
     if cossin:
         emb = np.concatenate([emb_cos, emb_sin], axis=1)  # (M, D)
@@ -110,7 +108,7 @@ def interpolate_pos_embed(model, checkpoint_model, remove_index=True):
             pos_tokens = pos_tokens.permute(0, 2, 3, 1).flatten(1, 2)
             new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
             checkpoint_model['absolute_pos_embed'] = new_pos_embed
-    
+
     if 'decoder_pos_embed' in checkpoint_model and hasattr(model, 'decoder_pos_embed'):
         pos_embed_checkpoint = checkpoint_model['decoder_pos_embed']
         embedding_size = pos_embed_checkpoint.shape[-1]
@@ -152,10 +150,10 @@ def interpolate_pos_embed(model, checkpoint_model, remove_index=True):
                 S2 = int(L2 ** 0.5)
                 print(f"relative bias from {S1} to {S2}")
                 table_pretrained_resized = F.interpolate(
-                     table_pretrained.permute(1, 0).view(1, nH1, S1, S1),
-                     size=(S2, S2), mode='bicubic')
+                    table_pretrained.permute(1, 0).view(1, nH1, S1, S1),
+                    size=(S2, S2), mode='bicubic')
                 checkpoint_model[table_key] = table_pretrained_resized.view(nH2, L2).permute(1, 0)
-    
+
     bias_index_keys = []
     for k in checkpoint_model.keys():
         if 'relative_position_index' in k and remove_index:
@@ -165,7 +163,6 @@ def interpolate_pos_embed(model, checkpoint_model, remove_index=True):
     for k in bias_index_keys:
         del checkpoint_model[k]
 
-    
     bias_index_keys = []
     for k in checkpoint_model.keys():
         if 'attn_mask' in k:
@@ -189,22 +186,22 @@ def _cfg(url='', **kwargs):
 default_cfgs = {
     'twins_pcpvt_small': _cfg(
         url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-vt3p-weights/twins_pcpvt_small-e70e7e7a.pth',
-        ),
+    ),
     'twins_pcpvt_base': _cfg(
         url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-vt3p-weights/twins_pcpvt_base-e5ecb09b.pth',
-        ),
+    ),
     'twins_pcpvt_large': _cfg(
         url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-vt3p-weights/twins_pcpvt_large-d273f802.pth',
-        ),
+    ),
     'twins_svt_small': _cfg(
         url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-vt3p-weights/twins_svt_small-42e5f78c.pth',
-        ),
+    ),
     'twins_svt_base': _cfg(
         url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-vt3p-weights/twins_svt_base-c2265010.pth',
-        ),
+    ),
     'twins_svt_large': _cfg(
         url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-vt3p-weights/twins_svt_large-90f6aaa9.pth',
-        ),
+    ),
 }
 
 Size_ = Tuple[int, int]
@@ -214,6 +211,7 @@ Size_ = Tuple[int, int]
 class LocallyGroupedAttn(nn.Module):
     """ LSA: self attention within a group
     """
+
     def __init__(self, dim, num_heads=8, attn_drop=0., proj_drop=0., ws=1):
         assert ws != 1
         super(LocallyGroupedAttn, self).__init__()
@@ -264,6 +262,7 @@ class LocallyGroupedAttn(nn.Module):
 class GlobalSubSampleAttn(nn.Module):
     """ GSA: using a  key to summarize the information for a group to be efficient.
     """
+
     def __init__(self, dim, num_heads=8, attn_drop=0., proj_drop=0., sr_ratio=1):
         super().__init__()
         assert dim % num_heads == 0, f"dim {dim} should be divided by num_heads {num_heads}."
@@ -286,7 +285,7 @@ class GlobalSubSampleAttn(nn.Module):
         else:
             self.sr = None
             self.norm = None
-        
+
     def forward(self, x, size: Size_, attn_mask=None):
         B, N, C = x.shape
         q = self.q(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
@@ -391,6 +390,7 @@ class Twins(nn.Module):
 
     Adapted from PVT (PyramidVisionTransformer) class at https://github.com/whai362/PVT.git
     """
+
     def __init__(
             self, img_size=224, patch_size=4, in_chans=3, num_classes=1000, global_pool='avg',
             embed_dims=(64, 128, 256, 512), num_heads=(1, 2, 4, 8), mlp_ratios=(4, 4, 4, 4), depths=(3, 4, 6, 3),
@@ -429,13 +429,13 @@ class Twins(nn.Module):
         # self.pos_block = nn.ModuleList([PosConv(embed_dim, embed_dim) for embed_dim in embed_dims])
         # self.pos_block = nn.ParameterList()
         for idx, embed_dim in enumerate(embed_dims):
-            num_patches = [56 ** 2, 28 ** 2, 14 ** 2, 7 ** 2]       # pretrain size is 224*224
+            num_patches = [56 ** 2, 28 ** 2, 14 ** 2, 7 ** 2]  # pretrain size is 224*224
             pe = nn.Parameter(torch.zeros(1, num_patches[idx], embed_dim), requires_grad=True)
             setattr(self, f'pos_block_{idx}', pe)
             _, N, C = pe.shape
             pos_embed = get_2d_sincos_pos_embed(C, int(N ** 0.5), cls_token=False)
             getattr(self, f'pos_block_{idx}').data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
-            #self.pos_block.append(pe)
+            # self.pos_block.append(pe)
 
         self.norm = norm_layer(self.num_features)
 
@@ -445,7 +445,7 @@ class Twins(nn.Module):
         #     _, N, C = pe.shape
         #     pos_embed = get_2d_sincos_pos_embed(C, int(N ** 0.5), cls_token=False)
         #     pe.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
-    
+
     @torch.jit.ignore
     def no_weight_decay(self):
         return set(['pos_block.' + n for n, p in self.pos_block.named_parameters()])
@@ -464,7 +464,7 @@ class Twins(nn.Module):
             m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
             if m.bias is not None:
                 m.bias.data.zero_()
-    
+
     def _scale_pe(self, pe, H, W):
         B, N, C = pe.shape
         h = int(N ** 0.5)
@@ -496,7 +496,7 @@ class Twins(nn.Module):
 
     def forward(self, x):
         return self.forward_features(x)
-    
+
 
 def _create_twins(variant, pretrained=False, **kwargs):
     if kwargs.get('features_only', None):

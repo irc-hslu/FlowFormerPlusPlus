@@ -11,7 +11,7 @@ import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from configs.submissions import get_cfg
-from core.utils.misc import process_cfg
+from flowformer_core.utils.misc import process_cfg
 import datasets
 from utils import flow_viz
 from utils import frame_utils
@@ -19,7 +19,7 @@ import cv2
 import math
 import os.path as osp
 
-from core.FlowFormer import build_flowformer
+from flowformer_core.FlowFormer import build_flowformer
 
 from utils.utils import InputPadder, forward_interpolate
 import itertools

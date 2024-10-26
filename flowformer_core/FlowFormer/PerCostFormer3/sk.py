@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .gma import Aggregate
+from flowformer_core.FlowFormer.PerCostFormer3.gma import Aggregate
 
 class PCBlock4_Deep_nopool_res(nn.Module):
     def __init__(self, C_in, C_out, k_conv):

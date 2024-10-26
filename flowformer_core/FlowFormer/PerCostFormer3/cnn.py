@@ -1,13 +1,15 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from timm.models.layers import Mlp, DropPath, to_2tuple, trunc_normal_
-import math
+from timm.models.layers import trunc_normal_
+
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_planes, planes, norm_fn='group', stride=1):
         super(ResidualBlock, self).__init__()
-  
+
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, padding=1, stride=stride)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, padding=1)
         self.relu = nn.ReLU(inplace=True)
@@ -19,13 +21,13 @@ class ResidualBlock(nn.Module):
             self.norm2 = nn.GroupNorm(num_groups=num_groups, num_channels=planes)
             if not stride == 1:
                 self.norm3 = nn.GroupNorm(num_groups=num_groups, num_channels=planes)
-        
+
         elif norm_fn == 'batch':
             self.norm1 = nn.BatchNorm2d(planes)
             self.norm2 = nn.BatchNorm2d(planes)
             if not stride == 1:
                 self.norm3 = nn.BatchNorm2d(planes)
-        
+
         elif norm_fn == 'instance':
             self.norm1 = nn.InstanceNorm2d(planes)
             self.norm2 = nn.InstanceNorm2d(planes)
@@ -40,11 +42,10 @@ class ResidualBlock(nn.Module):
 
         if stride == 1:
             self.downsample = None
-        
-        else:    
+
+        else:
             self.downsample = nn.Sequential(
                 nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride), self.norm3)
-
 
     def forward(self, x):
         y = x
@@ -54,38 +55,37 @@ class ResidualBlock(nn.Module):
         if self.downsample is not None:
             x = self.downsample(x)
 
-        return self.relu(x+y)
-
+        return self.relu(x + y)
 
 
 class BottleneckBlock(nn.Module):
     def __init__(self, in_planes, planes, norm_fn='group', stride=1):
         super(BottleneckBlock, self).__init__()
-  
-        self.conv1 = nn.Conv2d(in_planes, planes//4, kernel_size=1, padding=0)
-        self.conv2 = nn.Conv2d(planes//4, planes//4, kernel_size=3, padding=1, stride=stride)
-        self.conv3 = nn.Conv2d(planes//4, planes, kernel_size=1, padding=0)
+
+        self.conv1 = nn.Conv2d(in_planes, planes // 4, kernel_size=1, padding=0)
+        self.conv2 = nn.Conv2d(planes // 4, planes // 4, kernel_size=3, padding=1, stride=stride)
+        self.conv3 = nn.Conv2d(planes // 4, planes, kernel_size=1, padding=0)
         self.relu = nn.ReLU(inplace=True)
 
         num_groups = planes // 8
 
         if norm_fn == 'group':
-            self.norm1 = nn.GroupNorm(num_groups=num_groups, num_channels=planes//4)
-            self.norm2 = nn.GroupNorm(num_groups=num_groups, num_channels=planes//4)
+            self.norm1 = nn.GroupNorm(num_groups=num_groups, num_channels=planes // 4)
+            self.norm2 = nn.GroupNorm(num_groups=num_groups, num_channels=planes // 4)
             self.norm3 = nn.GroupNorm(num_groups=num_groups, num_channels=planes)
             if not stride == 1:
                 self.norm4 = nn.GroupNorm(num_groups=num_groups, num_channels=planes)
-        
+
         elif norm_fn == 'batch':
-            self.norm1 = nn.BatchNorm2d(planes//4)
-            self.norm2 = nn.BatchNorm2d(planes//4)
+            self.norm1 = nn.BatchNorm2d(planes // 4)
+            self.norm2 = nn.BatchNorm2d(planes // 4)
             self.norm3 = nn.BatchNorm2d(planes)
             if not stride == 1:
                 self.norm4 = nn.BatchNorm2d(planes)
-        
+
         elif norm_fn == 'instance':
-            self.norm1 = nn.InstanceNorm2d(planes//4)
-            self.norm2 = nn.InstanceNorm2d(planes//4)
+            self.norm1 = nn.InstanceNorm2d(planes // 4)
+            self.norm2 = nn.InstanceNorm2d(planes // 4)
             self.norm3 = nn.InstanceNorm2d(planes)
             if not stride == 1:
                 self.norm4 = nn.InstanceNorm2d(planes)
@@ -99,11 +99,10 @@ class BottleneckBlock(nn.Module):
 
         if stride == 1:
             self.downsample = None
-        
-        else:    
+
+        else:
             self.downsample = nn.Sequential(
                 nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride), self.norm4)
-
 
     def forward(self, x):
         y = x
@@ -114,7 +113,8 @@ class BottleneckBlock(nn.Module):
         if self.downsample is not None:
             x = self.downsample(x)
 
-        return self.relu(x+y)
+        return self.relu(x + y)
+
 
 class BasicEncoder(nn.Module):
     def __init__(self, input_dim=3, output_dim=128, norm_fn='batch', dropout=0.0):
@@ -124,7 +124,7 @@ class BasicEncoder(nn.Module):
 
         if self.norm_fn == 'group':
             self.norm1 = nn.GroupNorm(num_groups=8, num_channels=64 * mul)
-            
+
         elif self.norm_fn == 'batch':
             self.norm1 = nn.BatchNorm2d(64 * mul)
 
@@ -138,7 +138,7 @@ class BasicEncoder(nn.Module):
         self.relu1 = nn.ReLU(inplace=True)
 
         self.in_planes = 64 * mul
-        self.layer1 = self._make_layer(64 * mul,  stride=1)
+        self.layer1 = self._make_layer(64 * mul, stride=1)
         self.layer2 = self._make_layer(96 * mul, stride=2)
         self.layer3 = self._make_layer(128 * mul, stride=2)
 
@@ -165,7 +165,6 @@ class BasicEncoder(nn.Module):
 
         self.in_planes = dim
         return nn.Sequential(*layers)
-
 
     def forward(self, x):
 
@@ -201,7 +200,7 @@ class SmallEncoder(nn.Module):
 
         if self.norm_fn == 'group':
             self.norm1 = nn.GroupNorm(num_groups=8, num_channels=32)
-            
+
         elif self.norm_fn == 'batch':
             self.norm1 = nn.BatchNorm2d(32)
 
@@ -215,14 +214,14 @@ class SmallEncoder(nn.Module):
         self.relu1 = nn.ReLU(inplace=True)
 
         self.in_planes = 32
-        self.layer1 = self._make_layer(32,  stride=1)
+        self.layer1 = self._make_layer(32, stride=1)
         self.layer2 = self._make_layer(64, stride=2)
         self.layer3 = self._make_layer(96, stride=2)
 
         self.dropout = None
         if dropout > 0:
             self.dropout = nn.Dropout2d(p=dropout)
-        
+
         self.conv2 = nn.Conv2d(96, output_dim, kernel_size=1)
 
         for m in self.modules():
@@ -238,10 +237,9 @@ class SmallEncoder(nn.Module):
         layer1 = BottleneckBlock(self.in_planes, dim, self.norm_fn, stride=stride)
         layer2 = BottleneckBlock(dim, dim, self.norm_fn, stride=1)
         layers = (layer1, layer2)
-    
+
         self.in_planes = dim
         return nn.Sequential(*layers)
-
 
     def forward(self, x):
 
@@ -268,6 +266,7 @@ class SmallEncoder(nn.Module):
 
         return x
 
+
 class ConvNets(nn.Module):
     def __init__(self, in_dim, out_dim, inter_dim, depth, stride=1):
         super(ConvNets, self).__init__()
@@ -285,6 +284,7 @@ class ConvNets(nn.Module):
         x = self.conv_last(x)
         return x
 
+
 class FlowHead(nn.Module):
     def __init__(self, input_dim=128, hidden_dim=256):
         super(FlowHead, self).__init__()
@@ -295,51 +295,53 @@ class FlowHead(nn.Module):
     def forward(self, x):
         return self.conv2(self.relu(self.conv1(x)))
 
+
 class ConvGRU(nn.Module):
-    def __init__(self, hidden_dim=128, input_dim=192+128):
+    def __init__(self, hidden_dim=128, input_dim=192 + 128):
         super(ConvGRU, self).__init__()
-        self.convz = nn.Conv2d(hidden_dim+input_dim, hidden_dim, 3, padding=1)
-        self.convr = nn.Conv2d(hidden_dim+input_dim, hidden_dim, 3, padding=1)
-        self.convq = nn.Conv2d(hidden_dim+input_dim, hidden_dim, 3, padding=1)
+        self.convz = nn.Conv2d(hidden_dim + input_dim, hidden_dim, 3, padding=1)
+        self.convr = nn.Conv2d(hidden_dim + input_dim, hidden_dim, 3, padding=1)
+        self.convq = nn.Conv2d(hidden_dim + input_dim, hidden_dim, 3, padding=1)
 
     def forward(self, h, x):
         hx = torch.cat([h, x], dim=1)
 
         z = torch.sigmoid(self.convz(hx))
         r = torch.sigmoid(self.convr(hx))
-        q = torch.tanh(self.convq(torch.cat([r*h, x], dim=1)))
+        q = torch.tanh(self.convq(torch.cat([r * h, x], dim=1)))
 
-        h = (1-z) * h + z * q
+        h = (1 - z) * h + z * q
         return h
 
+
 class SepConvGRU(nn.Module):
-    def __init__(self, hidden_dim=128, input_dim=192+128):
+    def __init__(self, hidden_dim=128, input_dim=192 + 128):
         super(SepConvGRU, self).__init__()
-        self.convz1 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (1,5), padding=(0,2))
-        self.convr1 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (1,5), padding=(0,2))
-        self.convq1 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (1,5), padding=(0,2))
+        self.convz1 = nn.Conv2d(hidden_dim + input_dim, hidden_dim, (1, 5), padding=(0, 2))
+        self.convr1 = nn.Conv2d(hidden_dim + input_dim, hidden_dim, (1, 5), padding=(0, 2))
+        self.convq1 = nn.Conv2d(hidden_dim + input_dim, hidden_dim, (1, 5), padding=(0, 2))
 
-        self.convz2 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (5,1), padding=(2,0))
-        self.convr2 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (5,1), padding=(2,0))
-        self.convq2 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (5,1), padding=(2,0))
-
+        self.convz2 = nn.Conv2d(hidden_dim + input_dim, hidden_dim, (5, 1), padding=(2, 0))
+        self.convr2 = nn.Conv2d(hidden_dim + input_dim, hidden_dim, (5, 1), padding=(2, 0))
+        self.convq2 = nn.Conv2d(hidden_dim + input_dim, hidden_dim, (5, 1), padding=(2, 0))
 
     def forward(self, h, x):
         # horizontal
         hx = torch.cat([h, x], dim=1)
         z = torch.sigmoid(self.convz1(hx))
         r = torch.sigmoid(self.convr1(hx))
-        q = torch.tanh(self.convq1(torch.cat([r*h, x], dim=1)))        
-        h = (1-z) * h + z * q
+        q = torch.tanh(self.convq1(torch.cat([r * h, x], dim=1)))
+        h = (1 - z) * h + z * q
 
         # vertical
         hx = torch.cat([h, x], dim=1)
         z = torch.sigmoid(self.convz2(hx))
         r = torch.sigmoid(self.convr2(hx))
-        q = torch.tanh(self.convq2(torch.cat([r*h, x], dim=1)))       
-        h = (1-z) * h + z * q
+        q = torch.tanh(self.convq2(torch.cat([r * h, x], dim=1)))
+        h = (1 - z) * h + z * q
 
         return h
+
 
 class BasicMotionEncoder(nn.Module):
     def __init__(self, args):
@@ -349,7 +351,7 @@ class BasicMotionEncoder(nn.Module):
         self.convc2 = nn.Conv2d(256, 192, 3, padding=1)
         self.convf1 = nn.Conv2d(2, 128, 7, padding=3)
         self.convf2 = nn.Conv2d(128, 64, 3, padding=1)
-        self.conv = nn.Conv2d(64+192, 128-2, 3, padding=1)
+        self.conv = nn.Conv2d(64 + 192, 128 - 2, 3, padding=1)
 
     def forward(self, flow, corr):
         cor = F.relu(self.convc1(corr))
@@ -361,10 +363,11 @@ class BasicMotionEncoder(nn.Module):
         out = F.relu(self.conv(cor_flo))
         return torch.cat([out, flow], dim=1)
 
+
 class BasicFuseMotion(nn.Module):
     def __init__(self, args):
         super(BasicFuseMotion, self).__init__()
-        cor_planes = args.motion_feature_dim 
+        cor_planes = args.motion_feature_dim
         out_planes = args.query_latent_dim
 
         self.normf1 = nn.InstanceNorm2d(128)
@@ -375,15 +378,15 @@ class BasicFuseMotion(nn.Module):
         self.convf3 = nn.Conv2d(128, 64, 3, padding=1)
 
         s = 1
-        self.normc1 = nn.InstanceNorm2d(256*s)
-        self.normc2 = nn.InstanceNorm2d(256*s)
-        self.normc3 = nn.InstanceNorm2d(256*s)
+        self.normc1 = nn.InstanceNorm2d(256 * s)
+        self.normc2 = nn.InstanceNorm2d(256 * s)
+        self.normc3 = nn.InstanceNorm2d(256 * s)
 
-        self.convc1 = nn.Conv2d(cor_planes+128, 256*s, 1, padding=0)
-        self.convc2 = nn.Conv2d(256*s, 256*s, 3, padding=1)
-        self.convc3 = nn.Conv2d(256*s, 256*s, 3, padding=1)
-        self.convc4 = nn.Conv2d(256*s, 256*s, 3, padding=1)
-        self.conv = nn.Conv2d(256*s + 64, out_planes, 1, padding=0)
+        self.convc1 = nn.Conv2d(cor_planes + 128, 256 * s, 1, padding=0)
+        self.convc2 = nn.Conv2d(256 * s, 256 * s, 3, padding=1)
+        self.convc3 = nn.Conv2d(256 * s, 256 * s, 3, padding=1)
+        self.convc4 = nn.Conv2d(256 * s, 256 * s, 3, padding=1)
+        self.conv = nn.Conv2d(256 * s + 64, out_planes, 1, padding=0)
 
     def forward(self, flow, feat, context1=None):
         flo = F.relu(self.normf1(self.convf1(flow)))
@@ -401,18 +404,19 @@ class BasicFuseMotion(nn.Module):
 
         return feat
 
+
 class BasicUpdateBlock(nn.Module):
     def __init__(self, args, hidden_dim=128, input_dim=128):
         super(BasicUpdateBlock, self).__init__()
         self.args = args
         self.encoder = BasicMotionEncoder(args)
-        self.gru = SepConvGRU(hidden_dim=hidden_dim, input_dim=128+hidden_dim)
+        self.gru = SepConvGRU(hidden_dim=hidden_dim, input_dim=128 + hidden_dim)
         self.flow_head = FlowHead(hidden_dim, hidden_dim=256)
 
         self.mask = nn.Sequential(
             nn.Conv2d(128, 256, 3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, 64*9, 1, padding=0))
+            nn.Conv2d(256, 64 * 9, 1, padding=0))
 
     def forward(self, net, inp, corr, flow, upsample=True):
         motion_features = self.encoder(flow, corr)
@@ -425,6 +429,7 @@ class BasicUpdateBlock(nn.Module):
         mask = .25 * self.mask(net)
         return net, mask, delta_flow
 
+
 class DirectMeanMaskPredictor(nn.Module):
     def __init__(self, args):
         super(DirectMeanMaskPredictor, self).__init__()
@@ -432,13 +437,14 @@ class DirectMeanMaskPredictor(nn.Module):
         self.mask = nn.Sequential(
             nn.Conv2d(args.predictor_dim, 256, 3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, 64*9, 1, padding=0))
+            nn.Conv2d(256, 64 * 9, 1, padding=0))
 
     def forward(self, motion_features):
         delta_flow = self.flow_head(motion_features)
         mask = .25 * self.mask(motion_features)
 
         return mask, delta_flow
+
 
 class BaiscMeanPredictor(nn.Module):
     def __init__(self, args, hidden_dim=128):
@@ -450,7 +456,7 @@ class BaiscMeanPredictor(nn.Module):
         self.mask = nn.Sequential(
             nn.Conv2d(128, 256, 3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, 64*9, 1, padding=0))
+            nn.Conv2d(256, 64 * 9, 1, padding=0))
 
     def forward(self, latent, flow):
         motion_features = self.encoder(flow, latent)
@@ -458,6 +464,7 @@ class BaiscMeanPredictor(nn.Module):
         mask = .25 * self.mask(motion_features)
 
         return mask, delta_flow
+
 
 class BasicRPEEncoder(nn.Module):
     def __init__(self, args):
@@ -475,7 +482,9 @@ class BasicRPEEncoder(nn.Module):
     def forward(self, rpe_tokens):
         return self.encoder(rpe_tokens)
 
+
 from .twins import Block, CrossBlock
+
 
 class TwinsSelfAttentionLayer(nn.Module):
     def __init__(self, args):
@@ -488,12 +497,12 @@ class TwinsSelfAttentionLayer(nn.Module):
         sr_ratio = 4
         dpr = 0.
         drop_rate = 0.
-        attn_drop_rate=0.
+        attn_drop_rate = 0.
 
         self.local_block = Block(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, drop=drop_rate,
-                attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=ws, with_rpe=True)
+                                 attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=ws, with_rpe=True)
         self.global_block = Block(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, drop=drop_rate,
-                attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=1, with_rpe=True)
+                                  attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=1, with_rpe=True)
 
         self.apply(self._init_weights)
 
@@ -523,6 +532,7 @@ class TwinsSelfAttentionLayer(nn.Module):
         tgt = self.global_block(tgt, size)
         return x, tgt
 
+
 class TwinsCrossAttentionLayer(nn.Module):
     def __init__(self, args):
         super(TwinsCrossAttentionLayer, self).__init__()
@@ -534,12 +544,12 @@ class TwinsCrossAttentionLayer(nn.Module):
         sr_ratio = 4
         dpr = 0.
         drop_rate = 0.
-        attn_drop_rate=0.
+        attn_drop_rate = 0.
 
         self.local_block = Block(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, drop=drop_rate,
-                attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=ws, with_rpe=True)
+                                 attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=ws, with_rpe=True)
         self.global_block = CrossBlock(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, drop=drop_rate,
-                attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=1, with_rpe=True)
+                                       attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=1, with_rpe=True)
 
         self.apply(self._init_weights)
 
